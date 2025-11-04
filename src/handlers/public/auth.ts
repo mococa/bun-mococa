@@ -21,7 +21,7 @@ import { Provider, UserRole } from '../../services/enums';
 export function handlers() {
   return new Elysia<"/auth", AppContext>({ prefix: '/auth' })
     .use(cookie())
-    .get('/oauth/:provider', async ({ params, redirect, services, setCookie, sessionId }) => {
+    .get('/oauth/:provider', async ({ params, redirect, services, cookie, sessionId }) => {
       if (sessionId) throw new AlreadyLoggedIn();
 
       const { provider } = params;
@@ -30,20 +30,22 @@ export function handlers() {
       if (!validProvider) throw new UnsupportedProvider();
 
       const setCookies = (name: string, value: string, exp: number) => {
-        setCookie(name, value, {
-          httpOnly: true,
+        cookie[name].remove();
+        cookie[name].set({
           secure: true,
-          sameSite: 'lax',
+          httpOnly: false,
+          expires: new Date(Date.now() + exp * 1000),
+          value,
           path: '/',
           maxAge: exp,
-          expires: new Date(Date.now() + exp * 1000),
+          sameSite: 'lax',
         });
-      }
+      };
 
       const redirectUri = await services.auth.oauth.getAuthUrl(provider as Provider, setCookies);
-      redirect(redirectUri);
+      return redirect(redirectUri);
     })
-    .get('/oauth/callback/:provider', async ({ params, query, services, cookie, sessionId }) => {
+    .get('/oauth/callback/:provider', async ({ params, query, services, cookie, sessionId, set, db }) => {
       if (sessionId) throw new AlreadyLoggedIn();
 
       const { provider } = params;
@@ -54,17 +56,76 @@ export function handlers() {
       const { code, state } = query;
       if (!code || !state) throw new Error('Missing code or state in OAuth callback');
 
-      const getCookie = (name: string) => String(cookie[name].value || '');
+      const getCookie = (name: string) => cookie[name].value as string;
 
-      const user = await services.auth.oauth.exchangeCodeForProfile(provider as Provider, code as string, state as string, getCookie);
+      const profile = await services.auth.oauth.exchangeCodeForProfile(
+        provider as Provider,
+        code as string,
+        state as string,
+        getCookie,
+      );
 
-      // find or create user in database (db not setup yet, so using dummy userId 1)
+      // Check if this OAuth account (provider + providerId) already exists
+      const oauth = await db.query.oauthAccounts.findFirst({
+        where: (oauthAccounts, { and, eq }) =>
+          and(
+            eq(oauthAccounts.provider, provider),
+            eq(oauthAccounts.providerId, profile.id),
+          ),
+      });
+
+      // Find or create user:
+      // - If OAuth account exists, use the linked userId
+      // - Otherwise, try to find user by email (allows linking multiple OAuth providers to same user)
+      // - If no user exists, create a new one
+      let user = oauth
+        ? await db.query.users.findFirst({ where: (users, { eq }) => eq(users.id, oauth.userId) })
+        : await db.query.users.findFirst({ where: (users, { eq }) => eq(users.email, profile.email) });
+
+      if (!user) {
+        // Create new user (first time login)
+        const [newUser] = await db
+          .insert(db._.schema.users)
+          .values({
+            email: profile.email,
+            name: profile.name,
+            picture: profile.picture,
+            status: 'active',
+            role: UserRole.USER,
+          })
+          .returning();
+        user = newUser;
+
+        // Send welcome/registration notification to admins
+        services.notifications.notify('users.registration', {
+          email: user.email,
+          userId: user.id,
+          provider,
+        });
+      }
+
+      // Prevent banned users from logging in
+      if (user.status === 'banned') throw new BannedUserError();
+
+      if (!oauth) {
+        // Link this OAuth provider to the user (supports multiple OAuth accounts per user)
+        await db.insert(db._.schema.oauthAccounts).values({
+          provider: provider as Provider,
+          providerId: profile.id,
+          userId: user.id,
+        });
+      }
 
       // create session
-      sessionId = await services.auth.sessions.createSession({ userId: 1, role: UserRole.USER });
+      sessionId = await services.auth.sessions.createSession({
+        userId: user.id,
+        role: user.role as UserRole,
+        status: user.status as 'active' | 'inactive' | 'banned',
+      });
 
-      // return session token and basic user info
-      return { user, sessionId };
+      // return session token and basic user info in HTML response
+      set.headers['content-type'] = 'text/html';
+      return services.auth.oauth.html(user, sessionId);
     })
     /** Login with email + password */
     .post('/login', async ({ body, services, sessionId }) => {
@@ -252,6 +313,15 @@ class UnsupportedProvider extends Error {
 
   constructor() {
     super(JSON.stringify({ message: 'Unsupported OAuth provider.' }));
+  }
+}
+
+class BannedUserError extends Error {
+  status: number = 403;
+  name = "BannedUserError";
+
+  constructor() {
+    super(JSON.stringify({ message: 'Your account has been banned. Please contact support.' }));
   }
 }
 

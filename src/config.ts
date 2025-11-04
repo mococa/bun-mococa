@@ -19,9 +19,7 @@ export function checkEnv(): void {
     "S3_BUCKET",
     "COGNITO_CLIENT_ID",
     "OAUTH_REDIRECT_URI_BASE",
-    "STRIPE_API_KEY",
-    "STRIPE_WEBHOOK_SECRET",
-    "STRIPE_DEVICE_NAME",
+    "ABACATE_API_KEY",
     "REDIS_URL",
   ];
 

@@ -36,18 +36,14 @@ declare global {
             AWS_REGION: string;
             /** The name of the S3 bucket used for storage. */
             S3_BUCKET: string;
-            /** Stripe API key for payment processing. */
-            STRIPE_API_KEY: string;
-            /** Stripe webhook secret for verifying webhook signatures. */
-            STRIPE_WEBHOOK_SECRET: string;
-            /** The name of the device used in Stripe for payments. */
-            STRIPE_DEVICE_NAME: string;
             /** Discord bot token for sending notifications. */
             DISCORD_BOT_TOKEN?: string;
             /** Discord channel ID for sending notifications. */
             DISCORD_CHANNEL_ID?: string;
             /** Redis connection URL. */
             REDIS_URL: string;
+            /** AbacatePay API key for payment processing. */
+            ABACATE_API_KEY: string;
         }
     }
 }

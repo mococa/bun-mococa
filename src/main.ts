@@ -14,6 +14,7 @@ import { services } from './services';
 // Auth handlers
 import { Admin, Private, Public } from './handlers';
 import { createDatabase } from './db/db';
+import { crons } from './crons';
 
 // Validate environment variables
 checkEnv();
@@ -40,6 +41,7 @@ async function createApp() {
     .decorate('services', services)
     .get('/', (c) => `Welcome to the server!`)
     .get('/health', () => 'OK')
+    .use(crons({ db, services }))
     .use(Public.handlers)
     .use(Private.handlers)
     .use(Admin.handlers)

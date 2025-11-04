@@ -18,8 +18,9 @@ export type Services = typeof services
 export interface AppContext extends SingletonBase {
   decorator: {
     services: Services;
-    userId?: number;
+    userId?: string;
     role: Services['enums']['UserRole'];
+    status?: 'active' | 'inactive' | 'banned';
     sessionId?: string;
   },
   store: Record<string, unknown>;
@@ -27,11 +28,12 @@ export interface AppContext extends SingletonBase {
 
 /**
  * Session data structure stored in Redis for authenticated users.
- * Contains user ID, role, and expiration timestamp.
+ * Contains user ID, role, status, and expiration timestamp.
  */
 export interface SessionData {
-  userId: number;
+  userId: string;
   role: Services['enums']['UserRole'];
+  status: 'active' | 'inactive' | 'banned';
   exp: number;
 }
 

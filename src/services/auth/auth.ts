@@ -3,6 +3,7 @@
  * Provides centralized authentication functionality for all providers.
  */
 
+import type { RedisClient } from 'bun';
 import { Provider } from '../enums/enums';
 import { SessionManager } from './sessions';
 import { OAuthManager, type OAuthConfig } from './oauth';
@@ -18,9 +19,11 @@ export class Auth {
   /**
    * Initializes the authentication service with session manager, Cognito auth,
    * and configures OAuth providers based on available environment variables.
+   *
+   * @param redisClient Shared Redis client instance
    */
-  constructor() {
-    this.sessions = new SessionManager();
+  constructor(redisClient: RedisClient) {
+    this.sessions = new SessionManager(redisClient);
     
     // Configure OAuth providers
     const oauthConfigs: OAuthConfig[] = [];

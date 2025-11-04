@@ -223,4 +223,51 @@ export class OAuthManager {
     const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
     return Buffer.from(hash).toString('base64url');
   }
+
+  /**
+   * Generates HTML response for OAuth callback with window.postMessage.
+   * Used to pass user data and session token back to the opening window.
+   *
+   * @param user User data to return
+   * @param sessionId Session token for the authenticated user
+   * @returns HTML string with JavaScript to post message to opener
+   */
+  html(user: any, sessionId: string) {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Success</title>
+      </head>
+
+      <body>
+        <p>Redirecting...</p>
+
+        <script>
+          function send(data) {
+            if (!window.opener || window.opener.closed) {
+              alert("Please close this window and return to the application.");
+              window.close();
+              return;
+            }
+
+            window.opener.postMessage({
+              type: "oauth-callback",
+              data,
+            }, "*");
+
+            window.onmessage = (event) => {
+              if (event.data === 'close') {
+                window.close();
+              }
+            }
+          }
+          {{script}}
+        </script>
+      </body>
+    </html>
+    `.replace('{{script}}', `send(${JSON.stringify({ user, sessionId })});`);
+  }
 }

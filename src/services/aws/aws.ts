@@ -168,12 +168,16 @@ class Cognito {
 }
 
 class S3 {
+  /**
+   * The S3 bucket name used for storing files.
+   */
   bucket: string = process.env.S3_BUCKET || '';
+
   constructor(private s3Client: S3Client) {}
 
   /**
    * Generates a presigned URL for downloading/accessing an S3 object.
-   * 
+   *
    * @param key S3 object key
    * @param expiresIn URL expiration time in seconds (default: 1 hour)
    * @returns Promise<string> Presigned URL for accessing the object
@@ -188,14 +192,36 @@ class S3 {
   }
 
   /**
-   * Generates a presigned URL for uploading an object to S3.
-   * 
+   * Generates a presigned URL for downloading a private S3 object.
+   * The URL expires after the specified duration (default: 15 minutes).
+   *
+   * @param key S3 object key to generate download URL for
+   * @param expiresIn Expiration time in seconds (default: 900 = 15 minutes)
+   * @returns Promise<string> Presigned URL for downloading the object
+   */
+  async getPresignedDownloadUrl(key: string, expiresIn: number = 900): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+
+    return await getSignedUrl(this.s3Client, command, { expiresIn });
+  }
+
+  /**
+   * Generates a presigned URL for uploading a file to S3.
+   * The object will be private by default.
+   *
    * @param key S3 object key where the file will be stored
    * @param contentType MIME type of the file to upload
-   * @param expiresIn URL expiration time in seconds (default: 1 hour)
-   * @returns Promise<string> Presigned URL for uploading the object
+   * @param expiresIn Expiration time in seconds (default: 300 = 5 minutes)
+   * @returns Promise<string> Presigned URL for uploading the file
    */
-  async getPresignedUploadUrl(key: string, contentType: string, expiresIn: number = 3600): Promise<string> {
+  async getPresignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresIn: number = 300,
+  ): Promise<string> {
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -206,8 +232,44 @@ class S3 {
   }
 
   /**
+   * Generates a presigned URL for uploading a publicly accessible file to S3.
+   * Objects will be publicly accessible via bucket policy.
+   *
+   * @param key S3 object key where the file will be stored
+   * @param contentType MIME type of the file to upload
+   * @param expiresIn Expiration time in seconds (default: 300 = 5 minutes)
+   * @returns Promise<string> Presigned URL for uploading the file
+   */
+  async getPresignedUploadUrlPublic(
+    key: string,
+    contentType: string,
+    expiresIn: number = 300,
+  ): Promise<string> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
+      // No ACL - bucket policy will handle public access
+    });
+
+    return await getSignedUrl(this.s3Client, command, { expiresIn });
+  }
+
+  /**
+   * Generates a public URL for an S3 object (for objects with public-read ACL).
+   * This constructs the direct S3 URL without a signature.
+   *
+   * @param key S3 object key
+   * @returns string Public URL for accessing the object
+   */
+  getPublicUrl(key: string): string {
+    const region = process.env.AWS_REGION || 'us-east-1';
+    return `https://${this.bucket}.s3.${region}.amazonaws.com/${key}`;
+  }
+
+  /**
    * Directly uploads a file buffer to S3.
-   * 
+   *
    * @param key S3 object key where the file will be stored
    * @param file File data as Buffer
    * @param contentType MIME type of the file
@@ -225,13 +287,59 @@ class S3 {
   }
 
   /**
-   * Generates a unique S3 key for a user's file with timestamp and UUID.
-   * 
+   * Uploads a file from a local path to S3.
+   *
+   * @param key S3 object key where the file will be stored
+   * @param filePath Local file path to upload
+   * @returns Promise<void>
+   */
+  async uploadFromPath({ key, filePath }: { key: string; filePath: string }): Promise<void> {
+    const contentType = Bun.file(filePath).type || 'application/octet-stream';
+    const fileBuffer = await Bun.file(filePath).arrayBuffer();
+
+    // Objects are private by default when BlockPublicAccess is enabled on the bucket
+    await this.uploadFile(key, Buffer.from(fileBuffer), contentType);
+  }
+
+  /**
+   * Uploads a file to S3 and returns the S3 key (document URL).
+   * This is a convenience method for the common upload pattern.
+   *
+   * @param key S3 object key where the file will be stored
+   * @param file File data (can be Buffer, Blob, or File)
+   * @param contentType Optional MIME type forcing
+   * @returns Promise<string> The S3 key for accessing the uploaded file
+   */
+  async uploadToS3(
+    key: string,
+    file: Buffer | Blob | File | { buffer: ArrayBuffer },
+    contentType?: string,
+  ): Promise<string> {
+    let buffer: Buffer;
+
+    // Convert file to Buffer if needed
+    if (Buffer.isBuffer(file)) {
+      buffer = file;
+    } else if (file instanceof Blob) {
+      buffer = Buffer.from(await file.arrayBuffer());
+    } else if (file?.buffer) {
+      buffer = Buffer.from(file.buffer);
+    } else {
+      throw new Error('Unsupported file type');
+    }
+
+    await this.uploadFile(key, buffer, contentType ?? Bun.file(key).type ?? 'application/octet-stream');
+    return key;
+  }
+
+  /**
+   * Generates a unique S3 key for a user's file with UUID.
+   *
    * @param userId User ID for organizing files by user
    * @param filename Original filename to extract extension
-   * @returns string Unique S3 key in format: users/{userId}/{timestamp}_{uuid}.{ext}
+   * @returns string Unique S3 key in format: users/{userId}/{uuid}{filename}
    */
-  generateUserFileKey(userId: number, filename: string): string {
+  generateUserFileKey(userId: string, filename: string): string {
     return `users/${userId}/${crypto.randomUUID()}${filename}`;
   }
 }

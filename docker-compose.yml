@@ -1,98 +1,61 @@
 services:
-  # Stripe CLI for local development with webhooks
-  stripe-cli:
-    image: stripe/stripe-cli
-    container_name: stripe-cli
-    command:
-      - listen
-      - --forward-to
-      - server:3333/stripe/webhook
-      - --api-key
-      - ${STRIPE_API_KEY}
-      - --device-name
-      - ${STRIPE_DEVICE_NAME}
-      - --events
-      - payment_intent.succeeded,payment_intent.cancelled,payment_intent.payment_failed
-    env_file:
-      - .env
-    depends_on:
-      - server
+  # Redis for session management
+  redis:
+    image: redis:alpine
+    container_name: {{project-name}}-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
     networks:
-      - bun_app-network
+      - {{project-name}}-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  # Server itself
-  server:
-    image: bun_app-api:latest
-    container_name: bun_app-server-container
+  # API server
+  api:
     build:
       context: .
       dockerfile: Dockerfile
-    env_file: .env
-    networks:
-      - bun_app-network
+    container_name: {{project-name}}-api
+    restart: unless-stopped
     ports:
       - "3333:3333"
+    volumes:
+      - ./dist:/app/dist  # Persist database and .env
+    networks:
+      - {{project-name}}-network
     depends_on:
-      db:
+      redis:
         condition: service_healthy
-       # Ensure migrations are run before the server starts
-      migrate:
-        condition: service_completed_successfully
-
-  # Postgres
-  db:
-    image: postgres:alpine
-    container_name: bun_app-db-container
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: bun_app-db
-    volumes:
-      - ./bin/pgdata:/var/lib/postgresql/data
-    networks:
-      - bun_app-network
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./dist/.env
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d bun_app-db"]
-      interval: 1s
-      timeout: 1s
-      retries: 5
+      test: ["CMD", "curl", "-f", "http://localhost:3333/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
-  # Redis
-  redis:
-    image: redis:alpine
-    container_name: bun_app-redis-container
-    ports:
-      - "6379:6379"
-    networks:
-      - bun_app-network
-
-  migrate:
-    image: postgres:alpine
-    container_name: bun_app-migration-container
-    entrypoint: sh
-    command:
-      - -c
-      - |
-        until pg_isready -h db -p 5432 -U user; do
-          echo "Waiting for database..."
-          sleep 2
-        done
-
-        for f in /migrations/*.sql; do
-          [ -e "$$f" ] || continue
-          echo "running $f"
-          psql postgresql://user:password@db:5432/bun_app-db -f "$$f"
-        done
-    volumes:
-      - ./src/db/migrations:/migrations:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - bun_app-network
+  # Cloudflare tunnel
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: {{project-name}}-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN_FILE=/etc/cloudflared/tunnel_token
+    network_mode: host
+    env_file:
+      - ./dist/.env
 
 volumes:
-  db_data:
+  redis_data:
 
 networks:
-  bun_app-network:
+  {{project-name}}-network:
+    driver: bridge

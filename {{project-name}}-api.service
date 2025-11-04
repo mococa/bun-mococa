@@ -1,0 +1,17 @@
+[Unit]
+Description={{PROJECT_NAME}} API Stack (Docker Compose)
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User={{USER}}
+WorkingDirectory={{WORKING_DIRECTORY}}
+ExecStart=/snap/bin/docker compose up -d --build
+ExecStop=/snap/bin/docker compose down
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={{project-name}}-api
+
+[Install]
+WantedBy=multi-user.target

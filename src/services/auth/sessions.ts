@@ -3,7 +3,7 @@
  * Handles session creation, retrieval, refresh, and cleanup with automatic expiration.
  */
 
-import { RedisClient } from "bun";
+import type { RedisClient } from "bun";
 import type { SessionData } from '../../types/types';
 import { UserRole } from '../enums';
 
@@ -15,28 +15,28 @@ export class SessionManager {
   private client: RedisClient;
 
   /**
-   * Initializes the session manager with Redis client configuration.
+   * Initializes the session manager with a shared Redis client.
+   *
+   * @param redisClient Shared Redis client instance
    */
-  constructor() {
-    this.client = new RedisClient();
-    this.client.connect();
-    this.client.onconnect = () => {
-      console.log('Connected to Redis');
-    };
+  constructor(redisClient: RedisClient) {
+    this.client = redisClient;
   }
 
   /**
    * Creates a new user session and stores it in Redis.
-   * 
+   *
    * @param userId User ID to associate with the session
    * @param role User role for authorization purposes
+   * @param status User status (active, inactive, banned)
    * @returns Promise<string> Generated session ID
    */
-  async createSession({ userId, role }: { userId: number, role: UserRole }): Promise<string> {
+  async createSession({ userId, role, status }: { userId: string, role: UserRole, status?: 'active' | 'inactive' | 'banned' }): Promise<string> {
     const sessionId = this.generateSessionId();
     const sessionData: SessionData = {
       userId,
       role: role as unknown as typeof UserRole,
+      status: status || 'active',
       exp: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
     };
 

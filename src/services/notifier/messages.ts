@@ -22,7 +22,7 @@ export interface NotificationMessage {
  * @returns NotificationMessage Formatted success message
  */
 export const createPaymentSuccessMessage = (
-  {userId, transactionId, amount}: {userId: number,
+  {userId, transactionId, amount}: {userId: string,
   amount: number,
   transactionId: string}
 ): NotificationMessage => ({
@@ -42,7 +42,7 @@ export const createPaymentSuccessMessage = (
  * @returns NotificationMessage Formatted failure message
  */
 export const createPaymentFailureMessage = (
-  {userId, amount, transactionId, reason}: {userId: number,
+  {userId, amount, transactionId, reason}: {userId: string,
   amount: number,
   transactionId: string,
   reason?: string}
@@ -62,7 +62,7 @@ export const createPaymentFailureMessage = (
  * @returns NotificationMessage Formatted registration message
  */
 export const createUserRegistrationMessage = (
-  {email, userId, provider}: {userId: number,
+  {email, userId, provider}: {userId: string,
   email: string,
   provider?: string}
 ): NotificationMessage => ({

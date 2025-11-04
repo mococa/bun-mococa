@@ -1,38 +1,20 @@
-FROM oven/bun:1 as base
-WORKDIR /usr/src/app
+FROM oven/bun:1
 
-# Install dependencies into temp directory
-# This will cache them and speed up future builds
-FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lock /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
+WORKDIR /app
 
-# Install with --production (exclude devDependencies)
-RUN mkdir -p /temp/prod
-COPY package.json bun.lock /temp/prod/
-RUN cd /temp/prod && bun install --frozen-lockfile --production
+# Install curl for healthcheck
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy node_modules from temp directory
-# Then copy all (non-ignored) project files into the image
-FROM base AS prerelease
-COPY --from=install /temp/dev/node_modules node_modules
-COPY . .
+# Copy the pre-built dist folder from local machine
+COPY ./dist ./dist
 
-# [optional] tests & build
-# RUN bun test
-RUN bun run build
-
-# Copy production dependencies and source code into final image
-FROM base AS release
-COPY --from=install /temp/prod/node_modules node_modules
-COPY --from=prerelease /usr/src/app/dist ./dist
-COPY --from=prerelease /usr/src/app/package.json .
-
-# Run the app
-USER bun
+# Expose port
 EXPOSE 3333/tcp
 
 ENV ENV=production
 
-ENTRYPOINT [ "bun", "run", "dist/main.js" ]
+# Run with .env file from mounted volume
+ENTRYPOINT [ "bun", "--cwd=dist/", "--env-file=.env", "run", "main.js" ]
