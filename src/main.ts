@@ -88,3 +88,5 @@ async function main() {
 
 // Start the application
 main();
+
+export type App = Awaited<ReturnType<typeof createApp>>;
