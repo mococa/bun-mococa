@@ -5,6 +5,7 @@
 
 import type { SingletonBase } from 'elysia';
 import { services } from '../services/services';
+import type { ApiDatabase } from '../db/db';
 
 /**
  * Type alias for the services container, extracted from the services instance.
@@ -18,6 +19,7 @@ export type Services = typeof services
 export interface AppContext extends SingletonBase {
   decorator: {
     services: Services;
+    db: ApiDatabase;
     userId?: string;
     role: Services['enums']['UserRole'];
     status?: 'active' | 'inactive' | 'banned';

@@ -40,7 +40,7 @@ export class SessionManager {
       exp: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
     };
 
-    await this.client.set(sessionId, JSON.stringify(sessionData), "EXAT", sessionData.exp / 1000);
+    await this.client.set(sessionId, JSON.stringify(sessionData), "EXAT", Math.floor(sessionData.exp / 1000));
 
     return sessionId;
   }
@@ -86,7 +86,7 @@ export class SessionManager {
     if (!sessionData) return;
 
     sessionData.exp = Date.now() + (24 * 60 * 60 * 1000);
-    await this.client.set(sessionId, JSON.stringify(sessionData), "EXAT", sessionData.exp / 1000);
+    await this.client.set(sessionId, JSON.stringify(sessionData), "EXAT", Math.floor(sessionData.exp / 1000));
   }
 
   /**
